@@ -12,6 +12,11 @@ node_modules/
 .next/
 out/
 .env.local
+*.log
+*.tmp
+*.tsbuildinfo
+upload-smoke-test.pdf
+frontend/.data/
 
 # IDE
 .vscode/

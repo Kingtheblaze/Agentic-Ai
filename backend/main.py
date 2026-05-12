@@ -14,9 +14,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from agents.supervisor import invoke_supervisor
+from core.network import disable_dead_local_proxies
 from core.rag import process_and_store_pdf
 
 load_dotenv()
+disable_dead_local_proxies()
 
 app = FastAPI(
     title="OmniDesk API",
@@ -102,6 +104,8 @@ async def upload_document(file: UploadFile = File(...)):
             status="success",
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
 
 

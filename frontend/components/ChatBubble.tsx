@@ -13,7 +13,6 @@ import {
   Hash,
 } from "lucide-react";
 
-// ──────────────────────────── Types ──────────────────────────────────────────
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -32,7 +31,6 @@ export interface Message {
   };
 }
 
-// ──────────────────────────── Urgency Badge ──────────────────────────────────
 function UrgencyBadge({ urgency }: { urgency: string }) {
   const colors: Record<string, string> = {
     critical: "border-red-500/30 bg-red-500/10 text-red-400",
@@ -52,15 +50,14 @@ function UrgencyBadge({ urgency }: { urgency: string }) {
   );
 }
 
-// ──────────────────────────── Metadata Card ──────────────────────────────────
 function MetadataCard({ metadata }: { metadata: NonNullable<Message["metadata"]> }) {
-  const isTriage = !!metadata.category;
-  const isAcademic = !!metadata.sources && metadata.sources.length > 0;
+  const isTriage = Boolean(metadata.category);
+  const isAcademic = Boolean(metadata.sources?.length);
 
   if (!isTriage && !isAcademic) return null;
 
   return (
-    <div className="mt-3 rounded-xl border border-white/5 bg-white/[0.02] p-3 space-y-2">
+    <div className="mt-3 space-y-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
       {isTriage && (
         <>
           <div className="flex flex-wrap items-center gap-2">
@@ -85,7 +82,7 @@ function MetadataCard({ metadata }: { metadata: NonNullable<Message["metadata"]>
             )}
           </div>
           {metadata.summary && (
-            <p className="text-xs text-slate-400 italic">
+            <p className="text-xs italic text-slate-400">
               &ldquo;{metadata.summary}&rdquo;
             </p>
           )}
@@ -94,12 +91,10 @@ function MetadataCard({ metadata }: { metadata: NonNullable<Message["metadata"]>
 
       {isAcademic && metadata.sources && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-medium text-slate-400">
-            Sources:
-          </span>
-          {metadata.sources.map((src, i) => (
+          <span className="text-[11px] font-medium text-slate-400">Sources:</span>
+          {metadata.sources.map((src, index) => (
             <span
-              key={i}
+              key={`${src.source}-${src.page}-${index}`}
               className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-slate-400"
             >
               <FileText className="h-3 w-3" />
@@ -113,9 +108,9 @@ function MetadataCard({ metadata }: { metadata: NonNullable<Message["metadata"]>
   );
 }
 
-// ──────────────────────────── Chat Bubble ─────────────────────────────────────
 export function ChatBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
+  const contentLines = message.content.split("\n");
 
   return (
     <div
@@ -123,7 +118,6 @@ export function ChatBubble({ message }: { message: Message }) {
         isUser ? "flex-row-reverse" : ""
       }`}
     >
-      {/* Avatar */}
       <div
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
           isUser
@@ -138,12 +132,11 @@ export function ChatBubble({ message }: { message: Message }) {
         )}
       </div>
 
-      {/* Bubble */}
       <div className={`max-w-[85%] ${isUser ? "items-end" : "items-start"}`}>
-        {/* Agent label */}
         {!isUser && message.agent && (
           <div className="mb-1.5 flex items-center gap-1.5">
-            {message.agent.toLowerCase().includes("academic") ? (
+            {message.agent.toLowerCase().includes("academic") ||
+            message.agent.toLowerCase().includes("knowledge") ? (
               <GraduationCap className="h-3 w-3 text-brand-400" />
             ) : message.agent.toLowerCase().includes("triage") ? (
               <Zap className="h-3 w-3 text-amber-400" />
@@ -154,29 +147,23 @@ export function ChatBubble({ message }: { message: Message }) {
           </div>
         )}
 
-        {/* Content */}
         <div
           className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
             isUser
-              ? "bg-gradient-to-br from-brand-500 to-brand-600 text-white rounded-tr-sm"
-              : "glass-card text-slate-200 rounded-tl-sm"
+              ? "rounded-tr-sm bg-gradient-to-br from-brand-500 to-brand-600 text-white"
+              : "glass-card rounded-tl-sm text-slate-200"
           }`}
         >
-          {/* Render content with basic line breaks */}
-          {message.content.split("\n").map((line, i) => (
-            <React.Fragment key={i}>
+          {contentLines.map((line, index) => (
+            <React.Fragment key={index}>
               {line}
-              {i < message.content.split("\n").length - 1 && <br />}
+              {index < contentLines.length - 1 && <br />}
             </React.Fragment>
           ))}
         </div>
 
-        {/* Metadata */}
-        {!isUser && message.metadata && (
-          <MetadataCard metadata={message.metadata} />
-        )}
+        {!isUser && message.metadata && <MetadataCard metadata={message.metadata} />}
 
-        {/* Timestamp */}
         <p
           className={`mt-1 text-[10px] text-slate-500 ${
             isUser ? "text-right" : "text-left"

@@ -12,7 +12,10 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from core.network import disable_dead_local_proxies
+
 load_dotenv()
+disable_dead_local_proxies()
 
 TRIAGE_SYSTEM_PROMPT = """You are the IT Triage Agent for OmniDesk, the official help desk of a university Computer Science department.
 

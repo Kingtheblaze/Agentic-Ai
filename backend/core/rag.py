@@ -8,6 +8,7 @@ import os
 import io
 from datetime import datetime
 
+import certifi
 from dotenv import load_dotenv
 from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -15,7 +16,10 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_mongodb import MongoDBAtlasVectorSearch
 from pymongo import MongoClient
 
+from core.network import disable_dead_local_proxies
+
 load_dotenv()
+disable_dead_local_proxies()
 
 
 def _get_mongo_collection():
@@ -30,7 +34,7 @@ def _get_mongo_collection():
             "Please configure your MongoDB Atlas connection string."
         )
 
-    client = MongoClient(mongo_uri)
+    client = MongoClient(mongo_uri, tls=True, tlsCAFile=certifi.where())
     return client[db_name][collection_name]
 
 
@@ -50,7 +54,7 @@ def _split_pages_into_chunks(
 ) -> list[dict]:
     """Splits extracted pages into smaller overlapping chunks for embedding."""
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
+        chunk_size=2000,
         chunk_overlap=200,
         length_function=len,
         separators=["\n\n", "\n", ". ", " ", ""],
@@ -96,7 +100,7 @@ async def process_and_store_pdf(pdf_bytes: bytes, filename: str) -> int:
     index_name = os.getenv("MONGODB_VECTOR_INDEX_NAME", "vector_index")
 
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
+        model="models/gemini-embedding-001",
         google_api_key=os.getenv("GOOGLE_API_KEY"),
     )
 
@@ -111,6 +115,17 @@ async def process_and_store_pdf(pdf_bytes: bytes, filename: str) -> int:
     texts = [c["text"] for c in chunks]
     metadatas = [c["metadata"] for c in chunks]
 
-    vector_store.add_texts(texts=texts, metadatas=metadatas)
+    # Process in batches to avoid Gemini API Rate Limits (RESOURCE_EXHAUSTED)
+    batch_size = 20  # Gemini Free Tier is quite restrictive
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i : i + batch_size]
+        batch_metadatas = metadatas[i : i + batch_size]
+        
+        vector_store.add_texts(texts=batch_texts, metadatas=batch_metadatas)
+        
+        # Small delay between batches to respect rate limits
+        if i + batch_size < len(texts):
+            import asyncio
+            await asyncio.sleep(2) 
 
     return len(chunks)
