@@ -68,14 +68,15 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
             </h1>
             <p className="mt-4 max-w-lg text-sm leading-7 text-slate-400">
               Admin access is now gated behind a real login flow, and the PDF
-              upload route is protected on the server as well.
+              upload route is protected on the server as well. Admin accounts
+              and sessions are stored centrally in MongoDB.
             </p>
             <div className="mt-10 grid gap-4 md:grid-cols-2">
               {[
-                "One-time bootstrap signup for the first admin",
+                "Separate signup and login pages for admins",
                 "Server-side session protection for /admin",
                 "Upload API locked behind admin login",
-                "Ready for demos and department handoff",
+                "Admin users and sessions stored in MongoDB Atlas",
               ].map((item) => (
                 <div
                   key={item}
@@ -97,7 +98,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               </h2>
               <p className="mt-2 text-sm text-slate-400">
                 {isSignup
-                  ? "Create the first protected admin account for OmniDesk."
+                  ? "Create a protected admin account for OmniDesk."
                   : "Sign in to manage uploads and the admin dashboard."}
               </p>
             </div>
@@ -183,14 +184,14 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
             <div className="mt-6 text-sm text-slate-400">
               {isSignup ? (
                 <>
-                  Setup already finished?{" "}
+                  Already have an admin account?{" "}
                   <Link className="text-brand-300 hover:text-white" href="/login">
                     Sign in instead
                   </Link>
                 </>
               ) : (
                 <>
-                  Need the first admin account?{" "}
+                  Need a new admin account?{" "}
                   <Link className="text-brand-300 hover:text-white" href="/signup">
                     Open signup
                   </Link>

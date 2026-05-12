@@ -1,6 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
-import { mkdir, readFile, writeFile } from "fs/promises";
-import path from "path";
+import { getMongoClient, getMongoConfig } from "@/lib/mongo";
 
 export interface AdminUser {
   id: string;
@@ -17,41 +16,8 @@ interface SessionRecord {
   expiresAt: string;
 }
 
-const dataDir = path.join(process.cwd(), ".data");
-const usersPath = path.join(dataDir, "admin-users.json");
-const sessionsPath = path.join(dataDir, "admin-sessions.json");
-
 const SESSION_COOKIE = "omnidesk_admin_session";
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 7;
-
-async function ensureDataDir() {
-  await mkdir(dataDir, { recursive: true });
-}
-
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  await ensureDataDir();
-
-  try {
-    const raw = await readFile(filePath, "utf8");
-    return JSON.parse(raw) as T;
-  } catch (error: unknown) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "ENOENT"
-    ) {
-      return fallback;
-    }
-
-    throw error;
-  }
-}
-
-async function writeJsonFile<T>(filePath: string, value: T) {
-  await ensureDataDir();
-  await writeFile(filePath, JSON.stringify(value, null, 2), "utf8");
-}
 
 function hashPassword(password: string, salt?: string) {
   const resolvedSalt = salt || randomBytes(16).toString("hex");
@@ -70,64 +36,56 @@ function verifyPassword(password: string, passwordHash: string) {
   );
 }
 
-async function readUsers() {
-  return readJsonFile<AdminUser[]>(usersPath, []);
+async function getCollections() {
+  const client = await getMongoClient();
+  const { dbName, usersCollection, sessionsCollection } = getMongoConfig();
+  const db = client.db(dbName);
+
+  return {
+    users: db.collection<AdminUser>(usersCollection),
+    sessions: db.collection<SessionRecord>(sessionsCollection),
+  };
 }
 
-async function writeUsers(users: AdminUser[]) {
-  await writeJsonFile(usersPath, users);
-}
-
-async function readSessions() {
-  const sessions = await readJsonFile<SessionRecord[]>(sessionsPath, []);
-  const now = Date.now();
-  const activeSessions = sessions.filter(
-    (session) => new Date(session.expiresAt).getTime() > now
-  );
-
-  if (activeSessions.length !== sessions.length) {
-    await writeJsonFile(sessionsPath, activeSessions);
-  }
-
-  return activeSessions;
-}
-
-async function writeSessions(sessions: SessionRecord[]) {
-  await writeJsonFile(sessionsPath, sessions);
+async function cleanupExpiredSessions() {
+  const { sessions } = await getCollections();
+  await sessions.deleteMany({
+    expiresAt: { $lte: new Date().toISOString() },
+  });
 }
 
 export async function isSignupOpen() {
-  const users = await readUsers();
-  return users.length === 0;
+  return true;
 }
 
-export async function createInitialAdmin(input: {
+export async function createAdmin(input: {
   name: string;
   email: string;
   password: string;
 }) {
-  const users = await readUsers();
-  if (users.length > 0) {
-    throw new Error("Admin setup is already complete.");
+  const { users } = await getCollections();
+  const normalizedEmail = input.email.trim().toLowerCase();
+
+  const existingUser = await users.findOne({ email: normalizedEmail });
+  if (existingUser) {
+    throw new Error("An admin account with this email already exists.");
   }
 
   const admin: AdminUser = {
     id: randomBytes(12).toString("hex"),
     name: input.name.trim(),
-    email: input.email.trim().toLowerCase(),
+    email: normalizedEmail,
     passwordHash: hashPassword(input.password),
     createdAt: new Date().toISOString(),
   };
 
-  await writeUsers([admin]);
+  await users.insertOne(admin);
   return admin;
 }
 
 export async function authenticateAdmin(email: string, password: string) {
-  const users = await readUsers();
-  const user = users.find(
-    (candidate) => candidate.email === email.trim().toLowerCase()
-  );
+  const { users } = await getCollections();
+  const user = await users.findOne({ email: email.trim().toLowerCase() });
 
   if (!user || !verifyPassword(password, user.passwordHash)) {
     return null;
@@ -137,39 +95,42 @@ export async function authenticateAdmin(email: string, password: string) {
 }
 
 export async function createSession(userId: string) {
-  const sessions = await readSessions();
+  await cleanupExpiredSessions();
+
+  const { sessions } = await getCollections();
   const token = randomBytes(32).toString("hex");
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + SESSION_DURATION_MS);
 
-  const nextSessions = sessions.filter((session) => session.userId !== userId);
-  nextSessions.push({
+  await sessions.deleteMany({ userId });
+  await sessions.insertOne({
     token,
     userId,
     createdAt: createdAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
   });
 
-  await writeSessions(nextSessions);
   return token;
 }
 
 export async function revokeSession(token: string) {
-  const sessions = await readSessions();
-  await writeSessions(sessions.filter((session) => session.token !== token));
+  const { sessions } = await getCollections();
+  await sessions.deleteOne({ token });
 }
 
 export async function getSessionUser(token?: string | null) {
   if (!token) return null;
 
-  const [users, sessions] = await Promise.all([readUsers(), readSessions()]);
-  const session = sessions.find((candidate) => candidate.token === token);
+  await cleanupExpiredSessions();
+
+  const { users, sessions } = await getCollections();
+  const session = await sessions.findOne({ token });
 
   if (!session) {
     return null;
   }
 
-  return users.find((user) => user.id === session.userId) || null;
+  return users.findOne({ id: session.userId });
 }
 
 export const adminSessionCookie = {

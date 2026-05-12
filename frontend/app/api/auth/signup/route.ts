@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   adminSessionCookie,
-  createInitialAdmin,
+  createAdmin,
   createSession,
-  isSignupOpen,
 } from "@/lib/admin-auth";
 
 export async function POST(request: NextRequest) {
@@ -19,20 +18,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!(await isSignupOpen())) {
+  try {
+    const user = await createAdmin({ name, email, password });
+    const token = await createSession(user.id);
+    const response = NextResponse.json({
+      ok: true,
+      user: { name: user.name, email: user.email },
+    });
+
+    response.cookies.set(
+      adminSessionCookie.name,
+      token,
+      adminSessionCookie.options
+    );
+    return response;
+  } catch (error: unknown) {
     return NextResponse.json(
-      { error: "Admin signup has already been completed." },
-      { status: 403 }
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to create admin.",
+      },
+      { status: 409 }
     );
   }
-
-  const user = await createInitialAdmin({ name, email, password });
-  const token = await createSession(user.id);
-  const response = NextResponse.json({
-    ok: true,
-    user: { name: user.name, email: user.email },
-  });
-
-  response.cookies.set(adminSessionCookie.name, token, adminSessionCookie.options);
-  return response;
 }
